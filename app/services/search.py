@@ -93,10 +93,12 @@ async def search_properties(
             if listing.get("lat") is not None and listing.get("lon") is not None:
                 # Ensure map link is centered on the property but scoped in context of Adama
                 listing["map_url"] = (
-                    f"https://api.gebeta.app/staticmap?center={listing['lat']},{listing['lon']}&zoom=14&size=600x300&key={settings.GEBETA_API_KEY}"
+                    f"https://mapapi.gebeta.app/staticmap?center={listing['lat']},{listing['lon']}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
                 )
+                listing["preview_url"] = f"/api/v1/map/preview?lat={listing['lat']}&lon={listing['lon']}&zoom=14"
             else:
                 listing["map_url"] = None # Or a default map URL
+                listing["preview_url"] = None
 
         await redis.setex(cache_key, 3600, json.dumps(listings, default=str))
         return listings
@@ -119,10 +121,12 @@ async def get_property_by_id(prop_id: str) -> Optional[dict]:
         item = dict(row)
         if item.get("lat") is not None and item.get("lon") is not None:
             item["map_url"] = (
-                f"https://api.gebeta.app/staticmap?center={item['lat']},{item['lon']}&zoom=14&size=600x300&key={settings.GEBETA_API_KEY}"
+                f"https://mapapi.gebeta.app/staticmap?center={item['lat']},{item['lon']}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
             )
+            item["preview_url"] = f"/api/v1/map/preview?lat={item['lat']}&lon={item['lon']}&zoom=14"
         else:
             item["map_url"] = None
+            item["preview_url"] = None
         return item
 async def save_search(user_id: int, request: SavedSearchRequest) -> int:
     async_engine = create_async_engine(settings.DATABASE_URL)

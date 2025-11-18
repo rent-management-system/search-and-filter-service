@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import search
 from app.routers import onm
+from app.routers import health
+from app.routers import map_preview
 from app.core.logging import setup_logging
 from fastapi_limiter import FastAPILimiter
 from redis.asyncio import Redis
@@ -17,6 +19,8 @@ app.add_middleware(
 )
 app.include_router(search.router)
 app.include_router(onm.router)
+app.include_router(health.router)
+app.include_router(map_preview.router)
 
 @app.on_event("startup")
 async def startup_event():
