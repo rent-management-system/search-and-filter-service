@@ -124,7 +124,7 @@ async def search_properties(
                 listing["map_url"] = (
                     f"https://mapapi.gebeta.app/staticmap?center={listing['lat']},{listing['lon']}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
                 )
-                listing["preview_url"] = f"{settings.BASE_URL}/api/v1/map/preview?lat={listing['lat']}&lon={listing['lon']}&zoom=14"
+                listing["preview_url"] = f"/api/v1/map/preview?lat={listing['lat']}&lon={listing['lon']}&zoom=14"
             else:
                 listing["map_url"] = None # Or a default map URL
                 listing["preview_url"] = None
@@ -152,7 +152,7 @@ async def get_property_by_id(prop_id: str) -> Optional[dict]:
             item["map_url"] = (
                 f"https://mapapi.gebeta.app/staticmap?center={item['lat']},{item['lon']}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
             )
-            item["preview_url"] = f"{settings.BASE_URL}/api/v1/map/preview?lat={item['lat']}&lon={item['lon']}&zoom=14"
+            item["preview_url"] = f"/api/v1/map/preview?lat={item['lat']}&lon={item['lon']}&zoom=14"
         else:
             item["map_url"] = None
             item["preview_url"] = None

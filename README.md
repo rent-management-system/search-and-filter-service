@@ -95,49 +95,52 @@ graph TD
 
 ### Gebeta Map Service Integration
 
-This service relies heavily on the **Gebeta Map Service** for geospatial calculations and routing. The integration is encapsulated within the `app/services/gebeta.py` and `app/services/onm.py` modules.
+This service relies heavily on the **Gebeta Map Service** for geospatial calculations, static maps, and interactive map tiles. The integration is encapsulated within the `app/services/gebeta.py` and `app/services/onm.py` modules.
 
 **Purpose:**
 The Gebeta service provides critical location-based intelligence, including:
--   Calculating driving routes and distances between multiple points.
--   Providing a distance matrix to find the nearest points of interest.
--   Geocoding queries into latitude/longitude coordinates.
+-   Calculating driving routes and distances between multiple points (`/onm/route`).
+-   Providing a distance matrix to find the nearest points of interest (`/onm/nearest`).
+-   Geocoding text queries into latitude/longitude coordinates (`/geocode/{query}`).
+-   Serving static map images for property results.
+-   Providing map tiles for interactive map previews.
 
-**Integration Flow:**
-1.  **API Endpoints**: The integration is primarily used by the `/api/v1/onm/route` and `/api/v1/onm/nearest` endpoints.
-2.  **Service Layer**: The `onm_service` prepares the data (e.g., lists of coordinates) and calls the appropriate function in the `gebeta_service`.
-3.  **HTTP Client**: The `gebeta_service` uses `httpx` to make asynchronous HTTP GET requests to the Gebeta API endpoints (e.g., `https://api.gebeta.app/route`, `https://api.gebeta.app/matrix`). The required `GEBETA_API_KEY` is sent in the headers.
-4.  **Caching**: To improve performance and reduce costs, all calls to the Gebeta API are cached in **Redis**. A cache key is generated based on the request parameters (e.g., `onm:origin:[waypoints]`). If a result is found in the cache, it is returned immediately, bypassing the HTTP request. Cached results have a timeout (e.g., 10 minutes) to ensure data freshness.
-5.  **Retry Logic**: All external calls are wrapped in a `@retry` decorator, which automatically retries the request up to 3 times with an exponential backoff delay if it fails. This makes the integration more resilient to transient network issues.
+**Integration Flow & Caching:**
+1.  **API Endpoints**: The integration is used by multiple endpoints, including `/search`, `/onm/route`, and the new `/map/preview`.
+2.  **Service Layer**: The `onm_service` and `search_service` prepare data and call the appropriate function in the `gebeta_service`.
+3.  **HTTP Client & Caching**: The `gebeta_service` uses `httpx` to make asynchronous HTTP requests to the Gebeta API. To improve performance and reduce costs, all calls are cached in **Redis**:
+    -   API responses (like geocoding and routes) are cached as JSON strings.
+    -   Map tile images are cached as binary data.
+    -   A cache key is generated based on the request parameters (e.g., `tile:{z}:{x}:{y}`). If a result is found in the cache, it is returned immediately, bypassing the HTTP request.
+4.  **Retry Logic**: All external calls are wrapped in a `@retry` decorator, which automatically retries the request up to 3 times with an exponential backoff delay, making the integration more resilient to transient network issues.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant ONM Router
-    participant ONM Service
+    participant Search Router
+    participant Search Service
     participant Redis Cache
     participant Gebeta API
 
-    Client->>ONM Router: POST /api/v1/onm/route
-    ONM Router->>ONM Service: compute_route(origin, waypoints)
-    ONM Service->>Redis Cache: GET cache key for route
-    alt Cache Hit
-        Redis Cache-->>ONM Service: Return cached JSON
-    else Cache Miss
-        ONM Service->>Gebeta API: GET /route?params...
-        Gebeta API-->>ONM Service: Return route JSON
-        ONM Service->>Redis Cache: SET cache key with JSON
+    Client->>Search Router: GET /api/v1/search?location=...
+    Search Router->>Search Service: search_properties(...)
+    Search Service->>Redis Cache: GET cache key for search
+    alt Cache Miss
+        Search Service->>Gebeta API: (If needed) Geocode location
+        Search Service->>Redis Cache: SET cache for geocode
+        Search Service->>Redis Cache: SET cache for search results
     end
-    ONM Service-->>ONM Router: Return route data
-    ONM Router-->>Client: 200 OK with route data
+    Search Service-->>Search Router: Return property list
+    Search Router-->>Client: 200 OK with property data
 ```
 
 ---
 
 ## Key Features
 
-- **Advanced Property Search**: Implements complex, multi-faceted search logic to query property data.
+- **Advanced Property Search**: Implements complex, multi-faceted search logic. All searches are currently scoped to the Adama region with a default 20km radius.
 - **Personalized Saved Searches**: Authenticated users can create, name, view, and delete their personalized search queries.
+- **Interactive & Static Maps**: Provides both static map images (`map_url`) and interactive map previews (`preview_url`) for search results.
 - **Secure JWT Authentication**: All sensitive endpoints are secured using JSON Web Tokens.
 - **Fully Asynchronous**: Built on the ASGI standard for high-concurrency and non-blocking I/O.
 - **Robust Database Migrations**: Utilizes Alembic to manage database schema evolution in a safe, version-controlled manner.
@@ -223,43 +226,75 @@ The use of `JSONB` for the `filters` column is a key design choice, allowing the
 
 ## API Endpoint Documentation
 
-All endpoints require a valid JWT `Bearer` token in the `Authorization` header.
+The API is versioned under `/api/v1`.
 
-### `POST /search/`
-Creates a new saved search for the authenticated user.
+### `GET /search`
+Performs a property search. All searches are currently scoped to the Adama region.
 
-- **Authentication:** Required
-- **Request Body:**
-  ```json
-  {
-    "name": "My Downtown Apartment Search",
-    "filters": { "property_type": "Apartment", "max_price": 2500 },
-    "max_distance_km": 5
-  }
-  ```
-- **Success Response (`201 Created`):**
-  ```json
-  {
-    "id": 1,
-    "name": "My Downtown Apartment Search",
-    "user_id": 123,
-    "filters": { "property_type": "Apartment", "max_price": 2500 },
-    "max_distance_km": 5,
-    "created_at": "2025-11-18T10:00:00Z",
-    "updated_at": "2025-11-18T10:00:00Z"
-  }
-  ```
-
-### `GET /search/`
-Retrieves a list of all saved searches for the authenticated user.
-
-- **Authentication:** Required
+- **Authentication:** Required (Tenant role)
+- **Query Parameters:** `location`, `min_price`, `max_price`, `house_type`, `amenities`, `bedrooms`, `max_distance_km`, `sort_by`
 - **Success Response (`200 OK`):**
   ```json
   [
-    { "id": 1, "name": "My Downtown Apartment Search", "user_id": 123, "max_distance_km": 5 }
+    {
+      "id": "prop_123",
+      "title": "Cozy Apartment in Bole",
+      "description": "A nice place to live.",
+      "location": "Bole, Addis Ababa",
+      "price": 1500.0,
+      "house_type": "apartment",
+      "amenities": ["wifi", "parking"],
+      "lat": 8.99,
+      "lon": 38.79,
+      "distance_km": 2.5,
+      "map_url": "https://mapapi.gebeta.app/staticmap?center=8.99,38.79&zoom=14&size=600x300&apiKey=...",
+      "preview_url": "/api/v1/map/preview?lat=8.99&lon=38.79&zoom=14"
+    }
   ]
   ```
+
+### `POST /saved-searches`
+Creates a new saved search for the authenticated user.
+
+- **Authentication:** Required (Tenant role)
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "id": 1,
+    "message": "Search saved"
+  }
+  ```
+
+### `GET /property/{id}`
+Retrieves a single property by its ID.
+
+- **Authentication:** Required
+- **Success Response (`200 OK`):** Returns a single property object, similar to the one in the `/search` response.
+
+### `GET /geocode/{query}`
+Geocodes a location string into coordinates.
+
+- **Authentication:** None
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "lat": 9.03,
+    "lon": 38.75
+  }
+  ```
+
+### `GET /map/preview`
+Returns an interactive HTML map page for a given location.
+
+- **Authentication:** None
+- **Query Parameters:** `lat`, `lon`, `zoom`
+- **Success Response (`200 OK`):** Returns an `text/html` document.
+
+### `GET /map/tile/{z}/{x}/{y}`
+A proxy endpoint that retrieves map tiles from the Gebeta service.
+
+- **Authentication:** None
+- **Success Response (`200 OK`):** Returns an `image/png` tile.
 
 ---
 

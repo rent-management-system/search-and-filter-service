@@ -50,9 +50,9 @@ async def get_map_tile(z: int, x: int, y: int) -> bytes:
     logger.info("Map tile cache miss", cache_key=cache_key)
     async with httpx.AsyncClient() as client:
         try:
+            # Use mapapi host with explicit PNG extension and apiKey query
             response = await client.get(
-                f"https://api.gebeta.app/tiles/{z}/{x}/{y}",
-                headers={"X-Gebeta-API-Key": settings.GEBETA_API_KEY}
+                f"https://mapapi.gebeta.app/tiles/{z}/{x}/{y}.png?apiKey={settings.GEBETA_API_KEY}"
             )
             response.raise_for_status()
             tile = response.content  # bytes
