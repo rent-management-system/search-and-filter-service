@@ -39,12 +39,13 @@ async def geocode(query: str) -> dict:
 
 @retry(tries=3, delay=1, backoff=2)
 async def get_map_tile(z: int, x: int, y: int) -> bytes:
-    redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    # Use binary-safe Redis connection for tiles
+    redis = Redis.from_url(settings.REDIS_URL, decode_responses=False)
     cache_key = f"tile:{z}:{x}:{y}"
     cached = await redis.get(cache_key)
-    if cached:
+    if cached is not None:
         logger.info("Map tile cache hit", cache_key=cache_key)
-        return cached
+        return cached  # bytes
     
     logger.info("Map tile cache miss", cache_key=cache_key)
     async with httpx.AsyncClient() as client:
@@ -54,7 +55,7 @@ async def get_map_tile(z: int, x: int, y: int) -> bytes:
                 headers={"X-Gebeta-API-Key": settings.GEBETA_API_KEY}
             )
             response.raise_for_status()
-            tile = response.content
+            tile = response.content  # bytes
             await redis.setex(cache_key, 3600, tile)  # Cache for 1 hour
             return tile
         except httpx.HTTPStatusError as e:

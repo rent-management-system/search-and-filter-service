@@ -43,8 +43,8 @@ class SearchResponse(BaseModel):
     lat: float
     lon: float
     distance_km: float # Added distance_km
-    map_url: str
-    preview_url: str
+    map_url: Optional[str] = None
+    preview_url: Optional[str] = None
 
 class SavedSearchRequest(BaseModel):
     location: Optional[str] = None
