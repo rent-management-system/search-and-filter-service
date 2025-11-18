@@ -9,7 +9,7 @@ httpx>=0.25.0
 python-jose[cryptography]>=3.3.0
 redis>=5.0.1
 structlog>=23.2.0
-fastapi-limiter>=0.1.7
+fastapi-limiter==0.1.6
 pytest>=7.4.2
 pytest-asyncio>=0.21.1
 psycopg2-binary>=2.9.9
