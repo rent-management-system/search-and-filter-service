@@ -160,3 +160,144 @@ Response
 
 - GET `/api/v1/health` → `{ "status": "ok" }`
 - GET `/api/v1/health/ready` → readiness including `redis` and `database` checks.
+
+---
+
+# Frontend Developer Quick Reference
+
+This section gives you copy‑paste ready examples for integrating the API from a browser app.
+
+## Base Setup
+
+- Base URL: `http://localhost:8005`
+- Auth header (for protected routes):
+  - `Authorization: Bearer <JWT>`
+- Content Type for POST: `Content-Type: application/json`
+
+## Search Properties (Adama‑only)
+
+Endpoint
+- GET `/api/v1/search`
+
+Query Params
+- `min_price` (number, optional)
+- `max_price` (number, optional)
+- `house_type` (string, optional)
+- `amenities` (repeatable, optional): `amenities=wifi&amenities=parking`
+- `max_distance_km` (number, optional; default 20)
+- `sort_by` (string: `distance`|`price`; default `distance`)
+
+Browser fetch example (JS)
+```js
+const token = "<JWT>";
+const url = new URL("/api/v1/search", "http://localhost:8005");
+url.searchParams.set("max_distance_km", 12);
+url.searchParams.set("sort_by", "distance");
+url.searchParams.append("amenities", "wifi");
+url.searchParams.append("amenities", "parking");
+
+const res = await fetch(url, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+const data = await res.json();
+// data: Array<{ id, title, description, location, price, house_type, amenities, lat, lon, distance_km, map_url?, preview_url? }>
+
+// Open interactive map for first result
+if (data[0]?.preview_url) window.open(data[0].preview_url, "_blank");
+```
+
+Curl example
+```bash
+curl -H "Authorization: Bearer <JWT>" \
+  "http://localhost:8005/api/v1/search?max_distance_km=12&sort_by=distance&amenities=wifi&amenities=parking"
+```
+
+Minimal response item
+```json
+{
+  "id": "<uuid>",
+  "title": "House in Adama",
+  "description": "Spacious family house",
+  "location": "Adama",
+  "price": 2000.0,
+  "house_type": "house",
+  "amenities": ["wifi", "water"],
+  "lat": 8.54,
+  "lon": 39.27,
+  "distance_km": 0.21,
+  "map_url": null,
+  "preview_url": "/api/v1/map/preview?lat=8.54&lon=39.27&zoom=14"
+}
+```
+
+Notes
+- This service returns properties within an Adama radius only.
+- Use `preview_url` to open a working interactive map without exposing any API keys.
+
+## Get Single Property
+
+Endpoint
+- GET `/api/v1/property/{id}`
+
+JS example
+```js
+const token = "<JWT>";
+const id = "<uuid>";
+const res = await fetch(`http://localhost:8005/api/v1/property/${id}`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+const item = await res.json();
+if (item.preview_url) window.open(item.preview_url, "_blank");
+```
+
+## Save Search
+
+Endpoint
+- POST `/api/v1/saved-searches`
+
+JS example
+```js
+const token = "<JWT>";
+const payload = {
+  location: "Adama",
+  min_price: 5000,
+  max_price: 20000,
+  house_type: "apartment",
+  amenities: ["wifi"],
+  max_distance_km: 10
+};
+const res = await fetch("http://localhost:8005/api/v1/saved-searches", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`
+  },
+  body: JSON.stringify(payload)
+});
+const out = await res.json();
+// { id: number, message: "Search saved" }
+```
+
+## Map Preview (No Auth)
+
+Endpoint
+- GET `/api/v1/map/preview?lat=8.54&lon=39.27&zoom=14`
+
+Use this direct link from the browser to see an interactive map centered at a property. Example:
+```
+http://localhost:8005/api/v1/map/preview?lat=8.54&lon=39.27&zoom=14
+```
+
+## Error Handling Pattern
+
+Typical error envelope is FastAPI’s default. Example 401:
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+## CORS & Rate Limits
+
+- CORS is enabled. Adjust allowed origins in `app/main.py` for your deployed front-end domains.
+- Rate limits via `fastapi-limiter` apply per endpoint (see code for exact limits).
