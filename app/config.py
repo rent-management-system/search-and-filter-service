@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     MATRIX_API_BASE: str = "https://mapapi.gebeta.app/api/route/matrix/"
     # Dataset path for predefined routes (source/destination coordinates)
     ROUTES_DATA_PATH: str = "data/routes.json"
+    # Public base URL for generating absolute links (e.g., http://localhost:8005)
+    BASE_URL: str = "http://localhost:8005"
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

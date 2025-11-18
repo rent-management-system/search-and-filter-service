@@ -28,7 +28,36 @@ async def search_properties(
     cached = await redis.get(cache_key)
     if cached:
         logger.info("Search cache hit", cache_key=cache_key)
-        return json.loads(cached)
+        try:
+            listings = json.loads(cached)
+            # Ensure preview_url and map_url exist for each item (backward-compat for older cache)
+            changed = False
+            for listing in listings:
+                lat = listing.get("lat")
+                lon = listing.get("lon")
+                if lat is not None and lon is not None:
+                    expected_map = (
+                        f"https://mapapi.gebeta.app/staticmap?center={lat},{lon}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
+                    )
+                    if listing.get("map_url") != expected_map:
+                        listing["map_url"] = expected_map
+                        changed = True
+                    if not listing.get("preview_url"):
+                        listing["preview_url"] = f"/api/v1/map/preview?lat={lat}&lon={lon}&zoom=14"
+                        changed = True
+                else:
+                    if listing.get("map_url") is not None:
+                        listing["map_url"] = None
+                        changed = True
+                    if listing.get("preview_url") is not None:
+                        listing["preview_url"] = None
+                        changed = True
+            if changed:
+                await redis.setex(cache_key, 3600, json.dumps(listings, default=str))
+            return listings
+        except Exception:
+            # If cache is corrupted, ignore and rebuild
+            logger.warning("Cache parse/enrich failed; rebuilding", cache_key=cache_key)
     
     logger.info("Search cache miss", cache_key=cache_key)
 
