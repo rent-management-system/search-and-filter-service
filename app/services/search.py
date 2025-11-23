@@ -78,7 +78,7 @@ async def search_properties(
             query_str = """
                 SELECT p.id::text as id, p.title, p.description, p.location, p.price, p.house_type, p.amenities, p.photos, p.lat, p.lon,
                 (earth_distance(ll_to_earth(p.lat, p.lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km,
-                u.name as owner_name, u.email as owner_email, u.phone_number as owner_phone
+                u.full_name as owner_name, u.email as owner_email, u.phone_number as owner_phone
                 FROM properties p
                 LEFT JOIN users u ON p.user_id = u.id
                 WHERE p.status = 'APPROVED'
@@ -90,7 +90,7 @@ async def search_properties(
             query_str = """
                 SELECT p.id::text as id, p.title, p.description, p.location, p.price, p.house_type, p.amenities, p.photos, p.lat, p.lon,
                 0.0 AS distance_km,
-                u.name as owner_name, u.email as owner_email, u.phone_number as owner_phone
+                u.full_name as owner_name, u.email as owner_email, u.phone_number as owner_phone
                 FROM properties p
                 LEFT JOIN users u ON p.user_id = u.id
                 WHERE p.status = 'APPROVED'
@@ -155,7 +155,7 @@ async def get_property_by_id(prop_id: str) -> Optional[dict]:
         query_str = """
             SELECT p.id::text as id, p.title, p.description, p.location, p.price, p.house_type, p.amenities, p.photos, p.lat, p.lon,
             (earth_distance(ll_to_earth(p.lat, p.lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km,
-            u.name as owner_name, u.email as owner_email, u.phone_number as owner_phone
+            u.full_name as owner_name, u.email as owner_email, u.phone_number as owner_phone
             FROM properties p
             LEFT JOIN users u ON p.user_id = u.id
             WHERE p.id = :pid
@@ -249,7 +249,7 @@ async def get_all_approved_properties() -> List[dict]:
         query_str = """
             SELECT p.id::text as id, p.title, p.description, p.location, p.price, p.house_type, p.amenities, p.photos, p.lat, p.lon,
             0.0 AS distance_km,
-            u.name as owner_name, u.email as owner_email, u.phone_number as owner_phone
+            u.full_name as owner_name, u.email as owner_email, u.phone_number as owner_phone
             FROM properties p
             LEFT JOIN users u ON p.user_id = u.id
             WHERE p.status = 'APPROVED'
