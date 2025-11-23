@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 import json
 from typing import List, Optional
 from app.schemas.search import SavedSearchRequest # Added this import
+from app.models.search import SavedSearch
 
 logger = get_logger()
 
@@ -63,29 +64,33 @@ async def search_properties(
 
     async_engine = create_async_engine(settings.DATABASE_URL)
     async with AsyncSession(async_engine) as db:
-        # Base query with distance calculation using earthdistance
-        query_str = """
-            SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
-            (earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km
-            FROM properties
-            WHERE status = 'APPROVED'
-        """
         params = {}
         conditions = []
         
-        # Enforce Adama-only scope regardless of provided location/use_distance
-        adama_mode = True
-
-        # Prepare distance params from Adama center regardless, in case needed
-        user_lat, user_lon = 8.5408, 39.2682
-        params["user_lon"] = user_lon
-        params["user_lat"] = user_lat
-
-        # Always apply Adama distance radius
-        if max_distance_km is None:
-            max_distance_km = 20.0
-        conditions.append("earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) <= :max_distance_meters")
-        params["max_distance_meters"] = float(max_distance_km) * 1000.0
+        # Only apply distance filtering if use_distance is True and location/coordinates are provided
+        if use_distance and location and max_distance_km is not None:
+            # Use Adama center as default if no specific location coordinates provided
+            # In a full implementation, you would geocode the location parameter here
+            user_lat, user_lon = 8.5408, 39.2682
+            params["user_lon"] = user_lon
+            params["user_lat"] = user_lat
+            
+            query_str = """
+                SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+                (earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km
+                FROM properties
+                WHERE status = 'APPROVED'
+            """
+            conditions.append("earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) <= :max_distance_meters")
+            params["max_distance_meters"] = float(max_distance_km) * 1000.0
+        else:
+            # No distance filtering - search all approved properties
+            query_str = """
+                SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+                0.0 AS distance_km
+                FROM properties
+                WHERE status = 'APPROVED'
+            """
 
 
         if min_price is not None:
@@ -107,13 +112,13 @@ async def search_properties(
             query_str += " AND " + " AND ".join(conditions)
         
         # Add ordering
-        if sort_by == "distance" and adama_mode:
+        if sort_by == "distance" and use_distance and location and max_distance_km is not None:
             query_str += " ORDER BY distance_km"
         elif sort_by == "price":
             query_str += " ORDER BY price"
-        # Default ordering if no specific sort_by or location for distance sort
         else:
-            query_str += " ORDER BY id" # Fallback to ID for consistent ordering
+            # Default ordering by ID for consistent results
+            query_str += " ORDER BY id"
 
         result = await db.execute(text(query_str), params)
         listings = [dict(row) for row in result.mappings()]
@@ -173,3 +178,74 @@ async def save_search(user_id: int, request: SavedSearchRequest) -> int:
         await db.commit()
         await db.refresh(saved_search)
         return saved_search.id
+
+async def get_all_approved_properties() -> List[dict]:
+    """
+    Retrieve all approved properties from the database without any filters.
+    Returns all properties with status = 'APPROVED'.
+    """
+    cache_key = "all_approved_properties"
+    redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    
+    # Check cache first
+    cached = await redis.get(cache_key)
+    if cached:
+        logger.info("All approved properties cache hit")
+        try:
+            listings = json.loads(cached)
+            # Ensure preview_url and map_url exist for each item
+            changed = False
+            for listing in listings:
+                lat = listing.get("lat")
+                lon = listing.get("lon")
+                if lat is not None and lon is not None:
+                    expected_map = (
+                        f"https://mapapi.gebeta.app/staticmap?center={lat},{lon}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
+                    )
+                    if listing.get("map_url") != expected_map:
+                        listing["map_url"] = expected_map
+                        changed = True
+                    if not listing.get("preview_url"):
+                        listing["preview_url"] = f"/api/v1/map/preview?lat={lat}&lon={lon}&zoom=14"
+                        changed = True
+                else:
+                    if listing.get("map_url") is not None:
+                        listing["map_url"] = None
+                        changed = True
+                    if listing.get("preview_url") is not None:
+                        listing["preview_url"] = None
+                        changed = True
+            if changed:
+                await redis.setex(cache_key, 3600, json.dumps(listings, default=str))
+            return listings
+        except Exception:
+            logger.warning("Cache parse/enrich failed; rebuilding", cache_key=cache_key)
+    
+    logger.info("All approved properties cache miss")
+    
+    async_engine = create_async_engine(settings.DATABASE_URL)
+    async with AsyncSession(async_engine) as db:
+        query_str = """
+            SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+            0.0 AS distance_km
+            FROM properties
+            WHERE status = 'APPROVED'
+            ORDER BY id
+        """
+        result = await db.execute(text(query_str))
+        listings = [dict(row) for row in result.mappings()]
+        
+        # Add map URLs and preview URLs
+        for listing in listings:
+            if listing.get("lat") is not None and listing.get("lon") is not None:
+                listing["map_url"] = (
+                    f"https://mapapi.gebeta.app/staticmap?center={listing['lat']},{listing['lon']}&zoom=14&size=600x300&apiKey={settings.GEBETA_API_KEY}"
+                )
+                listing["preview_url"] = f"/api/v1/map/preview?lat={listing['lat']}&lon={listing['lon']}&zoom=14"
+            else:
+                listing["map_url"] = None
+                listing["preview_url"] = None
+        
+        # Cache for 1 hour
+        await redis.setex(cache_key, 3600, json.dumps(listings, default=str))
+        return listings

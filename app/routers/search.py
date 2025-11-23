@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.schemas.search import SearchQuery, SearchResponse, SavedSearchRequest
-from app.services.search import search_properties, save_search, get_property_by_id
+from app.services.search import search_properties, save_search, get_property_by_id, get_all_approved_properties
 from app.services.gebeta import geocode, get_map_tile
 from app.dependencies.auth import get_current_user
 from app.config import settings
@@ -92,3 +92,17 @@ async def geocode_location_endpoint(query: str):
     except Exception as e:
         logger.error("Geocode failed unexpectedly", query=query, error=str(e), exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Geocoding failed unexpectedly")
+
+@router.get("/properties/approved", response_model=List[SearchResponse], dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+async def list_all_approved_properties(user: dict = Depends(get_current_user)):
+    """
+    Get all approved properties from the database without any filters.
+    Returns all properties with status = 'APPROVED'.
+    """
+    try:
+        results = await get_all_approved_properties()
+        logger.info("Retrieved all approved properties", user_id=user.get("id"), result_count=len(results))
+        return results
+    except Exception as e:
+        logger.error("Failed to retrieve all approved properties", error=str(e), exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve approved properties")
