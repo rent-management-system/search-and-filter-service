@@ -40,6 +40,7 @@ class SearchResponse(BaseModel):
     price: float
     house_type: str
     amenities: List[str]
+    photos: Optional[List[str]] = [] # Added photos field
     lat: float
     lon: float
     distance_km: float # Added distance_km

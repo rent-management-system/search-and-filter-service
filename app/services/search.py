@@ -76,7 +76,7 @@ async def search_properties(
             params["user_lat"] = user_lat
             
             query_str = """
-                SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+                SELECT id::text as id, title, description, location, price, house_type, amenities, photos, lat, lon,
                 (earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km
                 FROM properties
                 WHERE status = 'APPROVED'
@@ -86,7 +86,7 @@ async def search_properties(
         else:
             # No distance filtering - search all approved properties
             query_str = """
-                SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+                SELECT id::text as id, title, description, location, price, house_type, amenities, photos, lat, lon,
                 0.0 AS distance_km
                 FROM properties
                 WHERE status = 'APPROVED'
@@ -142,7 +142,7 @@ async def get_property_by_id(prop_id: str) -> Optional[dict]:
     async with AsyncSession(async_engine) as db:
         # Compute distance from Adama center as context
         query_str = """
-            SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+            SELECT id::text as id, title, description, location, price, house_type, amenities, photos, lat, lon,
             (earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) / 1000.0) AS distance_km
             FROM properties
             WHERE id = :pid
@@ -226,7 +226,7 @@ async def get_all_approved_properties() -> List[dict]:
     async_engine = create_async_engine(settings.DATABASE_URL)
     async with AsyncSession(async_engine) as db:
         query_str = """
-            SELECT id::text as id, title, description, location, price, house_type, amenities, lat, lon,
+            SELECT id::text as id, title, description, location, price, house_type, amenities, photos, lat, lon,
             0.0 AS distance_km
             FROM properties
             WHERE status = 'APPROVED'
