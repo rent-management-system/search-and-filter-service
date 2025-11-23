@@ -83,7 +83,7 @@ async def search_properties(
                 LEFT JOIN users u ON p.user_id = u.id
                 WHERE p.status = 'APPROVED'
             """
-            conditions.append("earth_distance(ll_to_earth(lat, lon), ll_to_earth(:user_lat, :user_lon)) <= :max_distance_meters")
+            conditions.append("earth_distance(ll_to_earth(p.lat, p.lon), ll_to_earth(:user_lat, :user_lon)) <= :max_distance_meters")
             params["max_distance_meters"] = float(max_distance_km) * 1000.0
         else:
             # No distance filtering - search all approved properties
@@ -98,18 +98,18 @@ async def search_properties(
 
 
         if min_price is not None:
-            conditions.append("price >= :min_price")
+            conditions.append("p.price >= :min_price")
             params["min_price"] = min_price
         if max_price is not None:
-            conditions.append("price <= :max_price")
+            conditions.append("p.price <= :max_price")
             params["max_price"] = max_price
         if house_type:
-            conditions.append("house_type = :house_type")
+            conditions.append("p.house_type = :house_type")
             params["house_type"] = house_type
         if amenities:
             # Assuming amenities is stored as a JSONB array or similar in PostgreSQL
             # This condition checks if all provided amenities are present in the property's amenities
-            conditions.append("amenities @> :amenities_json")
+            conditions.append("p.amenities @> :amenities_json")
             params["amenities_json"] = json.dumps(amenities) # Pass as JSON string for @> operator
         
         if conditions:
@@ -119,10 +119,10 @@ async def search_properties(
         if sort_by == "distance" and use_distance and location and max_distance_km is not None:
             query_str += " ORDER BY distance_km"
         elif sort_by == "price":
-            query_str += " ORDER BY price"
+            query_str += " ORDER BY p.price"
         else:
             # Default ordering by ID for consistent results
-            query_str += " ORDER BY id"
+            query_str += " ORDER BY p.id"
 
         result = await db.execute(text(query_str), params)
         listings = [dict(row) for row in result.mappings()]
