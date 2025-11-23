@@ -32,6 +32,11 @@ class SearchQuery(BaseModel):
             }
         }
 
+class OwnerContact(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
 class SearchResponse(BaseModel):
     id: str
     title: str
@@ -46,6 +51,7 @@ class SearchResponse(BaseModel):
     distance_km: float # Added distance_km
     map_url: Optional[str] = None
     preview_url: Optional[str] = None
+    owner_contact: Optional[OwnerContact] = None
 
 class SavedSearchRequest(BaseModel):
     location: Optional[str] = None
