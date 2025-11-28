@@ -194,13 +194,70 @@ async def save_search(user_id: str, request: SavedSearchRequest) -> int:
             house_type=request.house_type,
             amenities=request.amenities,
             bedrooms=request.bedrooms,
-            max_distance_km=request.max_distance_km
+            max_distance_km=request.max_distance_km,
+            photos=request.photos,
+            property_id=request.property_id
         )
         db.add(saved_search)
         await db.commit()
         await db.refresh(saved_search)
-        logger.info("Search saved successfully", search_id=saved_search.id, user_id=user_id)
+        logger.info("Search saved successfully", search_id=saved_search.id, user_id=user_id, property_id=request.property_id)
         return saved_search.id
+
+async def get_user_saved_searches(user_id: str) -> List[dict]:
+    """
+    Retrieve all saved searches for a specific user.
+    """
+    async_engine = create_async_engine(settings.DATABASE_URL)
+    async with AsyncSession(async_engine) as db:
+        query_str = """
+            SELECT id, user_id::text, location, min_price, max_price, house_type, 
+                   amenities, bedrooms, max_distance_km, created_at, photos, property_id::text
+            FROM "SavedSearches"
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+        """
+        result = await db.execute(text(query_str), {"user_id": user_id})
+        searches = [dict(row) for row in result.mappings()]
+        logger.info("Retrieved saved searches", user_id=user_id, count=len(searches))
+        return searches
+
+async def execute_saved_search(search_id: int, user_id: str) -> List[dict]:
+    """
+    Execute a saved search by ID and return property results.
+    Verifies that the saved search belongs to the user.
+    """
+    async_engine = create_async_engine(settings.DATABASE_URL)
+    async with AsyncSession(async_engine) as db:
+        # Retrieve the saved search
+        query_str = """
+            SELECT id, user_id::text, location, min_price, max_price, house_type, 
+                   amenities, bedrooms, max_distance_km, photos, property_id::text
+            FROM "SavedSearches"
+            WHERE id = :search_id AND user_id = :user_id
+        """
+        result = await db.execute(text(query_str), {"search_id": search_id, "user_id": user_id})
+        saved_search = result.mappings().first()
+        
+        if not saved_search:
+            logger.warning("Saved search not found or unauthorized", search_id=search_id, user_id=user_id)
+            return None
+        
+        # Execute the search with saved criteria
+        results = await search_properties(
+            location=saved_search["location"],
+            min_price=saved_search["min_price"],
+            max_price=saved_search["max_price"],
+            house_type=saved_search["house_type"],
+            amenities=saved_search["amenities"],
+            bedrooms=saved_search["bedrooms"],
+            use_distance=True if saved_search["max_distance_km"] is not None else False,
+            max_distance_km=saved_search["max_distance_km"],
+            sort_by="distance"
+        )
+        
+        logger.info("Executed saved search", search_id=search_id, user_id=user_id, property_id=saved_search.get("property_id"), result_count=len(results))
+        return results
 
 async def get_all_approved_properties() -> List[dict]:
     """

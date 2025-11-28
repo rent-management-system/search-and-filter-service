@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ARRAY
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from app.models import Base # Import Base from the common models file
 
@@ -15,3 +15,5 @@ class SavedSearch(Base):
     created_at = Column(DateTime(timezone=False), server_default=func.current_timestamp())
     max_distance_km = Column(Float, nullable=True)
     user_id = Column(UUID(as_uuid=True), nullable=True)  # No FK constraint - users table is in another service
+    photos = Column(JSONB, nullable=False)  # Store photo URLs as JSONB array
+    property_id = Column(UUID(as_uuid=True), nullable=True)  # Reference to the property this search is based on

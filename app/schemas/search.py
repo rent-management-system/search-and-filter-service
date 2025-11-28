@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from enum import Enum
+from datetime import datetime
 
 class SortByEnum(str, Enum):
     distance = "distance"
@@ -61,3 +62,19 @@ class SavedSearchRequest(BaseModel):
     amenities: Optional[List[str]] = None
     bedrooms: Optional[int] = None
     max_distance_km: Optional[float] = None
+    photos: List[str] = []  # Photo URLs from the property
+    property_id: Optional[str] = None  # Property ID this search is based on
+
+class SavedSearchResponse(BaseModel):
+    id: int
+    user_id: str
+    location: Optional[str] = None
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+    house_type: Optional[str] = None
+    amenities: Optional[List[str]] = None
+    bedrooms: Optional[int] = None
+    max_distance_km: Optional[float] = None
+    created_at: datetime
+    photos: List[str] = []  # Photo URLs from the property
+    property_id: Optional[str] = None  # Property ID this search is based on

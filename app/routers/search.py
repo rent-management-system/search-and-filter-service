@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from app.schemas.search import SearchQuery, SearchResponse, SavedSearchRequest
-from app.services.search import search_properties, save_search, get_property_by_id, get_all_approved_properties
+from app.schemas.search import SearchQuery, SearchResponse, SavedSearchRequest, SavedSearchResponse
+from app.services.search import search_properties, save_search, get_property_by_id, get_all_approved_properties, get_user_saved_searches, execute_saved_search
 from app.services.gebeta import geocode, get_map_tile
 from app.dependencies.auth import get_current_user
 from app.config import settings
@@ -113,3 +113,54 @@ async def list_all_approved_properties(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error("Failed to retrieve all approved properties", error=str(e), exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve approved properties")
+
+@router.get("/saved-searches", response_model=List[SavedSearchResponse], dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+async def get_saved_searches(user: dict = Depends(get_current_user)):
+    """
+    Get all saved searches for the authenticated user.
+    Only tenants can retrieve their saved searches.
+    """
+    if user.get("role").lower() != "tenant":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Tenants can access saved searches")
+    
+    # Get user ID from auth service response
+    user_id = user.get("user_id") or user.get("sub") or user.get("id")
+    if not user_id:
+        logger.error("User ID not found in token", user_data=user)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user token")
+    
+    try:
+        saved_searches = await get_user_saved_searches(user_id)
+        logger.info("Retrieved saved searches for user", user_id=user_id, count=len(saved_searches))
+        return saved_searches
+    except Exception as e:
+        logger.error("Failed to retrieve saved searches", error=str(e), exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve saved searches")
+
+@router.get("/saved-searches/{search_id}/results", response_model=List[SearchResponse], dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+async def get_saved_search_results(search_id: int, user: dict = Depends(get_current_user)):
+    """
+    Execute a saved search by ID and return matching properties.
+    Only tenants can execute their own saved searches.
+    """
+    if user.get("role").lower() != "tenant":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Tenants can execute saved searches")
+    
+    # Get user ID from auth service response
+    user_id = user.get("user_id") or user.get("sub") or user.get("id")
+    if not user_id:
+        logger.error("User ID not found in token", user_data=user)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user token")
+    
+    try:
+        results = await execute_saved_search(search_id, user_id)
+        if results is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved search not found or you don't have permission to access it")
+        
+        logger.info("Executed saved search", user_id=user_id, search_id=search_id, result_count=len(results))
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to execute saved search", search_id=search_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to execute saved search")
