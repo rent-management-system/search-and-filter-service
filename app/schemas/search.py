@@ -59,4 +59,5 @@ class SavedSearchRequest(BaseModel):
     max_price: Optional[float] = None
     house_type: Optional[str] = None
     amenities: Optional[List[str]] = None
+    bedrooms: Optional[int] = None
     max_distance_km: Optional[float] = None

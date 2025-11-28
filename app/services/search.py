@@ -183,7 +183,7 @@ async def get_property_by_id(prop_id: str) -> Optional[dict]:
         }
         
         return item
-async def save_search(user_id: int, request: SavedSearchRequest) -> int:
+async def save_search(user_id: str, request: SavedSearchRequest) -> int:
     async_engine = create_async_engine(settings.DATABASE_URL)
     async with AsyncSession(async_engine) as db:
         saved_search = SavedSearch(
@@ -193,11 +193,13 @@ async def save_search(user_id: int, request: SavedSearchRequest) -> int:
             max_price=request.max_price,
             house_type=request.house_type,
             amenities=request.amenities,
+            bedrooms=request.bedrooms,
             max_distance_km=request.max_distance_km
         )
         db.add(saved_search)
         await db.commit()
         await db.refresh(saved_search)
+        logger.info("Search saved successfully", search_id=saved_search.id, user_id=user_id)
         return saved_search.id
 
 async def get_all_approved_properties() -> List[dict]:

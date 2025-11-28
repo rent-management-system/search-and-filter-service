@@ -63,12 +63,19 @@ async def get_property(id: str, user: dict = Depends(get_current_user)):
 async def save_search_endpoint(request: SavedSearchRequest, user: dict = Depends(get_current_user)):
     if user.get("role").lower() != "tenant":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Tenants can save searches")
+    
+    # Get user ID from auth service response
+    user_id = user.get("user_id") or user.get("sub") or user.get("id")
+    if not user_id:
+        logger.error("User ID not found in token", user_data=user)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user token")
+    
     try:
-        search_id = await save_search(user["id"], request)
-        logger.info("Saved search", user_id=user["id"], search_id=search_id)
+        search_id = await save_search(user_id, request)
+        logger.info("Saved search", user_id=user_id, search_id=search_id)
         return {"id": search_id, "message": "Search saved"}
     except Exception as e:
-        logger.error("Save search failed", error=str(e))
+        logger.error("Save search failed", error=str(e), exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save search")
 
 @router.get("/map/tile/{z}/{x}/{y}", response_class=Response)
